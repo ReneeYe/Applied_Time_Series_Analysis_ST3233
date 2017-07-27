@@ -1,0 +1,5 @@
+\contentsline {section}{\numberline {1} Exercise 1 (Can one trust confidence intervals?)}{2}
+\contentsline {section}{\numberline {2} Exercise 2 (Number of Birth in California?)}{9}
+\contentsline {section}{\numberline {3} Exercise 3 (How much beer?)}{22}
+\contentsline {section}{\numberline {4} Exercise 4 (Temperature in Singapore?)}{38}
+\contentsline {section}{\numberline {5} Exercise 5 (Monthly Car Sales in Quebuc?)}{54}

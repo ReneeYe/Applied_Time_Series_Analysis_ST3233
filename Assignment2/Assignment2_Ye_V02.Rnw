@@ -1,0 +1,590 @@
+\documentclass[10pt]{article}
+\usepackage{amsfonts,amssymb,amsbsy,amsmath,latexsym,natbib,graphicx}
+\usepackage{subfigure,color}
+\usepackage{fullpage}
+
+\begin{document}
+
+\title{National University of Singapore\\
+\bigskip\\
+ST3233: Applied Time Series Analysis\\
+Assignment 2\\
+\bigskip
+\small{Final Version}\\
+}
+\bigskip
+\author{Ye Rong}
+\bigskip
+\date{Oct.29.2016}
+\maketitle
+
+
+\tableofcontents
+
+\newpage
+
+\section{ Exercise 1 (Can one trust confidence intervals?)}
+
+<<warning=FALSE>>==
+library(forecast)
+library(fpp)
+@
+1. Fit a SARIMA model
+
+<<>>==
+load("E:/ST3233/Assignment2/Datasets/tsa3.rda")
+plot(birth,lwd = 2 ,main = "Monthly Birth(in thousand)")
+@
+From the plot, seasonal component = 12, so we differentiate it twice: lag = 12, lag = 1, and apply SARIMA model.
+
+<<>>==
+birth_d12 <- diff(birth, lag = 12)
+plot(birth_d12,lwd = 2,main = "diff(birth, lag = 12)")
+
+birth_d12_d1 <- diff(birth_d12,lag = 1)
+plot(birth_d12_d1,lwd = 2,main = "diff(diff(birth, lag = 12))")
+
+par(mfrow=c(2,1))
+acf(birth_d12_d1,lwd = 3, main = "ACF::diff(diff(birth, lag = 12))")
+pacf(birth_d12_d1,lwd = 3, main = "PACF::diff(diff(birth, lag = 12))")
+@
+From acf plot ,q \leq 1, and from partial-acf plot, p \leq 4. 
+For SARIMA model, generally, P,Q \leq 1
+
+<<>>==
+AIC_best = 10**6
+k <-  0
+for(p in 0:4){
+  for(q in 0:1){
+    for(P in 0:1){
+      for(Q in 0:1){
+        fit_sarima = Arima(birth, order = c(p,1,q), seasonal = c(P,1,Q))
+        if (fit_sarima$aic < AIC_best){
+          k = k + 1
+          AIC_best <- fit_sarima$aic
+          cat("model",k,"\t p=",p,"q=",q,"P=",P,"Q=",Q,"\t AIC=",
+              AIC_best,"\t Number of parameters=", p+q+P+Q, "\n")
+        }
+      }
+    }
+  }
+}
+@
+From the output, since SARIMA((4,1,0)(0,1,1)[12]) gives lowest AIC, we choose it.(number of parameters = 4+0+0+1 = 5)
+<<>>==
+birth_fit <- Arima(birth, order = c(4,1,0), seasonal = c(0,1,1))
+@
+
+Conclusion: The SARIMA model is : SARIMA((4,1,0)(0,1,1)[12])
+\bigskip
+2. Use your model to get a 80\% confidence interval for the number of births in Feb 1979.
+<<>>==
+forecast(fit_sarima, h=1)
+@
+Thus,the 80\% confidence interval for the number of births in Feb 1979 is [250.0562,267.3686]
+\bigskip
+3. Use an approach similar to cross validation to estimate whether you can trust the 80\% confidence interval.
+
+<<>>==
+ts_length <-  length(birth)
+forecast_length <- 1
+start <- 250
+lower_bounds <- c()
+upper_bounds<- c()
+correct_num <- 0
+wrong_num <- 0
+#Correct_num means the number of birth[i] in the 80% confidence interval
+for(i in start:(ts_length - forecast_length)){
+
+  fitted_sarima<-  Arima(birth[0:i], order = c(4,1,0), seasonal = c(0,1,1))
+  forecast_result <-  forecast(fitted_sarima, h = forecast_length)
+  lower_bounds[i] <- forecast_result$lower[1]
+  upper_bounds[i] <- forecast_result$upper[1]
+  if (birth[i+1] > lower_bounds[i] & birth[i+1] < upper_bounds[i]){
+    correct_num = correct_num + 1
+  }else{
+    wrong_num= wrong_num + 1
+  }
+}
+
+correct_num
+wrong_num
+
+#plot the bounds of confidence interval and the time series.
+upper_bounds_ts<-ts(upper_bounds, start = c(1948,2), frequency = 12)
+lower_bounds_ts<-ts(lower_bounds, start = c(1948,2), frequency = 12)
+
+par(mfrow=c(1,1))
+plot(birth, lwd =2, main="Prediction of Birth Time Series")
+lines(upper_bounds_ts, lwd = 3, col = "blueviolet")
+lines(lower_bounds_ts, lwd = 3, col = "blueviolet")
+@
+We did 123 forecasts to examine whether the true value lies in the 80\% confidence interval of prediction,
+There are 104/123 in the confidence interval, and 19/123 of the forecasts doesn't.
+Also, from the plot, we can trust 80\% confidence interval.
+
+
+\section{ Exercise 2 (Number of Birth in California?)}
+
+1. Load the data and plot.
+<<>>==
+birth_data <- read.csv("E:/ST3233/Assignment2/Datasets/daily-total-female-births-in-cal.csv",
+                       header= TRUE,sep=",")
+birth_cal <- ts(birth_data$Daily.total.female.births.in.California,
+                frequency = 356,start = c(1959))
+par(mfrow=c(1,1))
+plot(birth_cal,lwd = 2, main = "Daily total female births in California")
+
+#Plot ACF to see whether the time series is stationary or not.
+acf(birth_cal,lwd = 2, main ="ACF::Birth in California",lag.max = 20)
+@
+From the plot, the time series is not stationary, thus we cannot use ARMA model. Besides, there is no seasonal component in this time series, so we first choose ARIMA model.
+\bigskip
+2. Fit an ARIMA model.
+<<>>==
+#Consider a new time series: diff(birth_cal)
+birth_d1 = diff(birth_cal)
+plot(birth_d1,lwd = 2, main = "Diff(birth in California)")
+#Diff(birth_cal) is stationary, and then consider the acf and pacf.
+
+par(mfrow=c(2,1))
+acf(birth_d1,lwd = 2, main =  "ACF::diff(birth)",lag.max = 20)
+pacf(birth_d1,lwd = 2, main =  "PACF::diff(birth)",lag.max = 20)
+@
+From acf plot ,q \leq 1, and from partial-acf plot, p \leq 6 with d = 1
+
+<<>>==
+AIC_best <- 10**6
+for (p in 0:6){
+  for (q in 0:1){
+    fit_arima <- Arima(birth_cal, order = c(p,1,q))
+    if (fit_arima$aic < AIC_best){
+      AIC_best <- fit_arima$aic
+      cat("p = ",p,",d = 1, q = ",q,", AIC = ",AIC_best,"\n")
+    }
+  }
+}
+@
+ARIMA(1,1,1) has the lowest AIC, so we choose ARIMA(1,1,1)
+
+<<>>==
+arima_fit <- Arima(birth_cal,order = c(1,1,1))
+@
+
+3. Examining the normality of the residuals to test the ARIMA(1,1,1) model
+<<>>==
+par(mfrow=c(1,1))
+plot(resid(arima_fit),lwd=2, main="resid(ARIMA(1,1,1))")
+
+par(mfrow=c(2,1))
+acf(resid(arima_fit),lwd=2, main="ACF::resid(ARIMA(1,1,1))",lag.max = 20)
+pacf(resid(arima_fit),lwd=2, main="PACF::resid(ARIMA(1,1,1))",lag.max = 20)
+par(mfrow=c(1,1))
+qqnorm(resid(arima_fit), main="QQplot::resid(ARIMA(1,1,1))", lwd=3)
+qqline(resid(arima_fit), lwd=2, col="red")
+@
+Thus, the residuals are follows a Gaussian Distribution.
+\bigskip
+4. Another model is Double exponential smooting
+<<>>==
+DES_fit <- holt(birth_cal, initial = "optimal", h =2*7)
+DES_fit
+plot(DES_fit,main = "Birth Forecasts from Double Exponential Smoothing", lwd = 2)
+@
+
+5. Compare ARIMA(1,1,1) and DES by using cross-validation
+<<>>==
+#Define a function CV to do cross-validation
+CV <-  function(time_series, start, forecast_length,ts_model){
+  ts_length <-  length(time_series)
+  accuracy_list = c()
+  for(k in start:(ts_length - forecast_length)){
+    fitted_model <- ts_model(ts(time_series[0:k]))
+    RMSE <-  accuracy(forecast(fitted_model, h = forecast_length))[2]
+    accuracy_list = c(accuracy_list, RMSE)
+  }
+  return(accuracy_list)
+}
+
+#Define two models
+model_ARIMA <- function(ts) return(Arima(ts,order = c(1,1,1)))
+model_DES <- function(ts) return(holt(ts,initial = "optimal"))
+
+start <- 250
+forecast_length <- 7
+CV_birth_Cal <- data.frame(
+  arima = CV(birth_cal, start, forecast_length, model_ARIMA),
+  des = CV(birth_cal, start, forecast_length, model_DES)
+)
+
+boxplot(CV_birth_Cal,main = "Birth::Cross Validation for RMSE", lwd=2)
+@
+
+From boxplot, ARIMA(1,1,1) has a lower RMSE, which is a better model. That's why we choose ARIMA(1,1,1)
+\bigskip
+6. Forecast the number of birth during the two weeks by using ARIMA(1,1,1)
+<<>>==
+arima_forecast <- forecast(arima_fit, h = 2*7)
+arima_forecast
+plot(arima_forecast,main = "Birth Forecasts from ARIMA(1,1,1)",lwd = 2)
+@
+
+
+\section{ Exercise 3 (How much beer?)}
+
+1. Load the data and plot.
+<<>>==
+beer_data <- read.csv("E:/ST3233/Assignment2/Datasets/quarterly-beer-production-in-aus.csv",
+                      header= TRUE,sep=",")
+beer <- ts(beer_data$beer_production,frequency = 4,start=c(1956))
+par(mfrow=c(1,1))
+plot(beer,lwd = 2, main = "Quarterly Beer Production in Austrilia")
+#From the plot, we can clearly see that there is periodicity and trend, thus we decompose it.
+beer_decmp <-stl(beer,s.window = "periodic", robust = T)
+plot(beer_decmp)
+#seasonal plot
+seasonplot(beer - beer_decmp$time.series[,"trend"], s = 4,col = 1:6, type = "l")
+@
+There is seasonal behavior, thus we first use SARIMA model
+\bigskip
+2. Fit the model.
+Notice that the fluctation of the time series becomes larger as the time changes, so we consider a new time series: log(beer)
+
+<<>>==
+log_beer = log(beer)
+plot(log_beer, lwd=2, main="log_beer")
+
+log_beer_d4 = diff(log_beer, lag = 4)
+plot(log_beer_d4,lwd = 2, main = "diff(log_beer, lag = 4)")
+
+log_beer_d4_d1 = diff(log_beer_d4, lag = 1)
+plot(log_beer_d4_d1,lwd = 2, main = "diff(diff(log_beer, lag = 4))")
+
+par(mfrow=c(2,1))
+acf(log_beer_d4_d1,lwd = 2, main = "ACF::diff(diff(log_beer, lag = 4))",lag.max = 20)
+pacf(log_beer_d4_d1,lwd = 2, main = "PACF::diff(diff(log_beer, lag = 4))",lag.max = 20)
+@
+From acf plot ,q \leq 4, and from partial-acf plot, p \leq 2 with d = D = 1 and P \leq 1, Q \leq 1
+
+<<>>==
+AIC_best <- 10**6
+for (p in 0:2){
+  for (q in 0:4){
+    for (P in 0:1){
+      for (Q in 0:1){
+        fit_sarima <- Arima(log_beer, order = c(p,1,q), seasonal = c(P,1,Q))
+        if (fit_sarima$aic < AIC_best){
+          AIC_best <- fit_sarima$aic
+          cat("p = ",p,", q = ",q,",P = ",P,",Q = ",Q,"\t AIC = ",AIC_best,"\n")
+        }
+      }
+    }
+  }
+}
+@
+The lowest AIC gives the best fitted model of log_beer, which is SARIMA(0,1,2)(0,1,1)[4]
+<<>>==
+sarima_fit <- Arima(log_beer, order = c(0,1,2), seasonal = c(0,1,1))
+@
+
+3. Then consider the residuals of the SARIMA model.
+<<>>==
+par(mfrow=c(1,1))
+plot(resid(sarima_fit),lwd=2, main="resid(SARIMA(0,1,2)(0,1,1)[4])")
+
+par(mfrow=c(2,1))
+acf(resid(sarima_fit),lwd=2, main="ACF::resid(SARIMA(0,1,2)(0,1,1)[4])")
+pacf(resid(sarima_fit),lwd=2, main="PACF::resid(SARIMA(0,1,2)(0,1,1)[4])")
+#The residual is stationary.
+
+par(mfrow=c(1,1))
+qqnorm(resid(sarima_fit),lwd=2, main="QQplot::resid(SARIMA(0,1,2)(0,1,1)[4])")
+qqline(resid(sarima_fit), lwd=2, col="red")
+@
+The distribution of residuals can be regard as a gaussian distribution.
+
+So, SARIMA(0,1,2)(0,1,1)[4] is a good model.
+\bigskip
+4. Another method is to use Triple exponential smoothing
+<<>>==
+DES_fit <- hw(beer, initial = "optimal", seasonal = "additive", h = 6)
+DES_fit
+plot(DES_fit,main = "Beer Forecasts from triple Exponential Smoothing", lwd = 2)
+@
+
+5. Use cross-validation to compare these two models
+
+<<>>==
+CV <-  function(time_series, start, forecast_length,ts_model){
+  ts_length <-  length(time_series)
+  accuracy_list = c()
+  for(k in start:(ts_length - forecast_length)){
+    fitted_model <- ts_model(ts(time_series[0:k],frequency = 4))
+    RMSE <-  accuracy(forecast(fitted_model, h = forecast_length))[2]
+    accuracy_list = c(accuracy_list, RMSE)
+  }
+  return(accuracy_list)
+}
+
+#Define two models
+model_SARIMA <- function(ts) 
+  return(Arima(ts, order = c(0,1,2), seasonal = c(0,1,1)))
+model_TES <- function(ts) 
+  return(hw(ts,initial = "optimal", seasonal = "additive"))
+
+start <- 90
+forecast_length <- 6
+CV_beer <- data.frame(
+  sarima = CV(log_beer, start, forecast_length, model_SARIMA),
+  tes = CV(log_beer, start, forecast_length, model_TES)
+)
+
+boxplot(CV_beer,main = "Beer::Cross Validation for RMSE", lwd=2)
+@
+
+From boxplot, SARIMA(0,1,2)(0,1,1)[4] gives a better prediction, because it gives a lower RMSE.
+\bigskip
+6. Forecast the number of birth during the two weeks by using SARIMA(0,1,2)(0,1,1)[4].
+
+<<>>==
+sarima_forecast <- forecast(sarima_fit, h = 6)
+sarima_forecast$x<-exp(sarima_forecast$x)
+sarima_forecast$lower<-exp(sarima_forecast$lower)
+sarima_forecast$upper<-exp(sarima_forecast$upper)
+sarima_forecast$mean<-exp(sarima_forecast$mean)
+sarima_forecast
+plot(sarima_forecast, main = "Beer Forecasts from SARIMA(0,1,2)(0,1,1)[4]",lwd = 2)
+@
+
+
+\section{ Exercise 4 (Temperature in Singapore?)}
+
+1. Load the data and plot.
+<<>>==
+temp_data <- read.csv("E:/ST3233/Assignment2/Datasets/temperature_in_singapore.csv",
+                      header= TRUE,sep=",")
+temp <- ts(temp_data$mean_temp,frequency = 12,
+           start=c(1982,1))
+par(mfrow=c(1,1))
+plot(temp,lwd = 2, main = "Temperature in SG")
+acf(temp,lwd = 2 , main = "ACF::Temp")
+#The time series {temp} is not stationary and has seasonal behavior, decompose it.
+temp_decmp <-stl(temp,s.window = "periodic", robust = T)
+plot(temp_decmp)
+seasonplot(temp-temp_decmp$time.series[,"trend"],s = 12, col = 1:12, type = "l")
+@
+There is seasonal component and trend, thus, use SARIMA model
+\bigskip
+2. Fit the SARIMA model.
+
+<<>>==
+temp_d12 = diff(temp, lag = 12)
+plot(temp_d12,lwd = 2, main = "diff(temp, lag = 12)")
+
+temp_d12_d1 = diff(temp_d12, lag = 1)
+plot(temp_d12_d1,lwd = 2, main = "diff(diff(temp, lag = 12))")
+par(mfrow=c(2,1))
+acf(temp_d12_d1,lwd = 2, main = "ACF::diff(diff(temp, lag = 12))")
+pacf(temp_d12_d1,lwd = 2, main = "PACF::diff(diff(temp, lag = 12))")
+@
+From acf plot ,q \leq 1, and from partial-acf plot, p \leq 5 with d = D = 1 and P \leq 1, Q \leq 1.
+
+<<>>==
+AIC_best <- 10**6
+for (p in 0:5){
+  for (q in 0:1){
+    for (P in 0:1){
+      for (Q in 0:1){
+        fit_sarima <- Arima(temp, order = c(p,1,q),seasonal = c(P,1,Q))
+        if (fit_sarima$aic < AIC_best){
+          AIC_best <- fit_sarima$aic
+          cat("p = ",p,", q = ",q,",P = ",P,",Q = ",Q,"\t AIC = ",AIC_best,"\n")
+        }
+      }
+    }
+  }
+}
+@
+
+From the results, SARIMA(2,1,1)(0,1,1)[12] gives a lower AIC, with number of parameters = 4
+
+<<>>==
+temp_fit <- Arima(temp, order = c(2,1,1), seasonal = c(0,1,1))
+@
+
+3. Then consider the residuals of the SARIMA model.
+<<>>==
+par(mfrow=c(1,1))
+plot(resid(temp_fit),lwd=2, main="resid(SARIMA(2,1,1)(0,1,1)[12])")
+par(mfrow=c(2,1))
+acf(resid(temp_fit),lwd=2, main="ACF::resid(SARIMA(2,1,1)(0,1,1)[12])",lag.max = 11)
+pacf(resid(temp_fit),lwd=2, main="PACF::resid(SARIMA(2,1,1)(0,1,1)[12])",lag.max = 11)
+#The residual is stationary.
+par(mfrow=c(1,1))
+qqnorm(resid(temp_fit),lwd=2, main="QQplot::resid(SARIMA(2,1,1)(0,1,1)[12])")
+qqline(resid(temp_fit), lwd=2, col="red")
+@
+The residual follows a Gaussian Distribution.
+So, SARIMA(2,1,1)(0,1,1)[12] is a good smodel.
+\bigskip
+4. Another method is to use Triple exponential smoothing
+<<>>==
+DES_fit <- hw(temp, initial = "optimal", seasonal = "additive", h = 2*12)
+DES_fit
+plot(DES_fit,main = "Temperature Forecasts from triple Exponential Smoothing", lwd = 2)
+@
+
+5. Use cross-validation to compare these two models
+<<>>==
+CV <-  function(time_series, start, forecast_length,ts_model){
+  ts_length <-  length(time_series)
+  accuracy_list = c()
+  for(k in start:(ts_length - forecast_length)){
+    fitted_model <- ts_model(ts(time_series[0:k],frequency = 12))
+    RMSE <-  accuracy(forecast(fitted_model, h = forecast_length))[2]
+    accuracy_list = c(accuracy_list, RMSE)
+  }
+  return(accuracy_list)
+}
+
+model_SARIMA <- function(ts) 
+  return(Arima(ts, order = c(2,1,1), seasonal = c(0,1,1)))
+model_TES <- function(ts) 
+  return(hw(ts,initial = "optimal", seasonal = "additive"))
+
+start <- 300
+forecast_length <- 24
+CV_temp <- data.frame(
+  sarima = CV(temp, start, forecast_length, model_SARIMA),
+  tes = CV(temp, start, forecast_length, model_TES)
+)
+
+boxplot(CV_temp,main = "Temp::Cross Validation for RMSE", lwd=2)
+@
+From boxplot, SARIMA(2,1,1)(0,1,1)[12] gives a better prediction, due to the lower RMSE.
+\bigskip
+6. Forecast the number of birth during the two weeks by using SARIMA(2,1,1)(0,1,1)[12] model.
+<<>>==
+temp_forecast <- forecast(temp_fit, h = 2*12)
+temp_forecast
+plot(temp_forecast, main = "Temperature Forecasts from SARIMA(2,1,1)(0,1,1)[12]",lwd = 2)
+@
+
+
+\section{ Exercise 5 (Monthly Car Sales in Quebuc?)}
+
+1. Load the data and plot.
+<<>>==
+carSale_data <- read.csv("E:/ST3233/Assignment2/Datasets/monthly-car-sales-in-quebec-1960.csv",
+                         header= TRUE,sep=",")
+carSale <- ts(carSale_data$Monthly.car.sales.in.Quebec.1960.1968[1:108], 
+              frequency = 12,start=c(1960,1))
+par(mfrow=c(1,1))
+plot(carSale,lwd = 2, main = "monthly car sales")
+acf(carSale,lwd = 2 , main = "ACF::carSale")
+#The time series is not stationary and has periodicity and trend.
+
+carSale_decmp <-stl(carSale, s.window = "periodic", robust = T)
+plot(carSale_decmp)
+seasonplot(carSale-carSale_decmp$time.series[,"trend"],s = 12, col = 1:12, type = "l")
+@
+There is seasonal component and trend, thus, use SARIMA model
+\bigskip
+2.First fit the SARIMA model.
+<<>>==
+carSale_d12 = diff(carSale, lag = 12)
+plot(carSale_d12,lwd = 2, main = "diff(carSale, lag = 12)")
+acf(carSale_d12,lwd = 2, main ="ACF::diff(carSale, lag = 12)")
+#carSale_d12 is not stationary, consider diff(carSale_d12)
+
+carSale_d12_d1 = diff(carSale_d12, lag = 1)
+plot(carSale_d12_d1,lwd = 2, main = "diff(diff(carSale, lag = 12))")
+par(mfrow=c(2,1))
+acf(carSale_d12_d1,lwd = 2, main = "ACF::diff(diff(carSale, lag = 12))")
+pacf(carSale_d12_d1,lwd = 2, main = "PACF::diff(diff(carSale, lag = 12))")
+@
+From acf plot ,q \leq 1, and from partial-acf plot, p \leq 2 with d = D = 1 and P \leq 1, Q \leq 1
+
+<<>>==
+AIC_best <- 10**6
+for (p in 0:2){
+  for (q in 0:1){
+    for (P in 0:1){
+      for (Q in 0:1){
+        fit_sarima <- Arima(carSale, order = c(p,1,q),seasonal = c(P,1,Q))
+        if (fit_sarima$aic < AIC_best){
+          AIC_best <- fit_sarima$aic
+          cat("p = ",p,", q = ",q,",P = ",P,",Q = ",Q,"\t AIC = ",AIC_best,"\n")
+        }
+      }
+    }
+  }
+}
+@
+The lowest AIC gives the best fitted model, which is SARIMA(0,1,1)(0,1,1)[12]
+
+<<>>==
+carSale_fit <- Arima(carSale, order = c(0,1,1), seasonal = c(0,1,1))
+@
+
+3. Then consider the residuals of the SARIMA model.
+<<>>==
+par(mfrow=c(1,1))
+plot(resid(carSale_fit),lwd=2, main="resid(SARIMA(0,1,1)(0,1,1)[12])")
+par(mfrow=c(2,1))
+acf(resid(carSale_fit),lwd=2, main="ACF::resid(SARIMA(0,1,1)(0,1,1)[12])",lag.max = 11)
+pacf(resid(carSale_fit),lwd=2, main="PACF::resid(SARIMA(0,1,1)(0,1,1)[12])",lag.max = 11)
+#The residual is stationary.
+par(mfrow=c(1,1))
+qqnorm(resid(carSale_fit),lwd=2, main="QQplot::resid(SARIMA(0,1,1)(0,1,1)[12])")
+qqline(resid(carSale_fit), lwd=2, col="red")
+shapiro.test(resid(carSale_fit))
+@
+From the qq-plot and Shapiro test(p-value = 0.3211>0.05), the residual can be regard as a gaussian distribution.
+So, SARIMA(0,1,1)(0,1,1)[12] is a good model.
+\bigskip
+4. Another method is using Triple exponential smoothing
+
+<<>>==
+TES_fit <- hw(carSale, initial = "optimal", seasonal = "additive", h = 2*12)
+TES_fit
+plot(TES_fit,main = "Car Sales Forecasts from Triple Exponential Smoothing", lwd = 2)
+@
+
+5. Use cross-validation to compare these two models
+<<>>==
+CV <-  function(time_series, start, forecast_length,ts_model){
+  ts_length <-  length(time_series)
+  accuracy_list = c()
+  for(k in start:(ts_length - forecast_length)){
+    fitted_model <- ts_model(ts(time_series[0:k],frequency = 12))
+    RMSE <-  accuracy(forecast(fitted_model, h = forecast_length))[2]
+    accuracy_list = c(accuracy_list, RMSE)
+  }
+  return(accuracy_list)
+}
+
+model_SARIMA <- function(ts) 
+  return(Arima(ts, order = c(0,1,1), seasonal = c(0,1,1)))
+model_TES <- function(ts) 
+  return(hw(ts,initial = "optimal", seasonal = "additive"))
+
+start <- 60
+forecast_length <- 2*12
+CV_carSale <- data.frame(
+  sarima = CV(carSale, start, forecast_length, model_SARIMA),
+  tes = CV(carSale, start, forecast_length, model_TES)
+)
+
+boxplot(CV_carSale,main = "Car Sales::Cross Validation for RMSE", lwd=2)
+@
+From boxplot, TES gives a better prediction due to the lower RMSE.
+\bigskip
+6. Forecast the number of birth during the two weeks by using triple exponential smoothing.
+<<>>==
+TES_fit <- hw(carSale, initial = "optimal", seasonal = "additive", h = 2*12)
+TES_fit
+plot(TES_fit,main = "Car Sales Forecasts from Triple Exponential Smoothing", lwd = 2)
+@
+
+\end{document}
